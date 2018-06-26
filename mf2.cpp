@@ -67,6 +67,15 @@ struct UDPSocket {
         if (err != 0)
             throw std::runtime_error(perr("Connect failed"));
     }
+
+    void bind(const V4Addr& addr) {
+        int err = ::bind(fd_.get(),
+                reinterpret_cast<const struct sockaddr*>(&addr.sockaddr_),
+                sizeof(addr.sockaddr_));
+
+        if (err != 0)
+            throw std::runtime_error(perr("Bind failed"));
+    }
 };
 
 static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr) {
@@ -97,7 +106,10 @@ __attribute__((noreturn))
 static void usage();
 static void usage() {
     std::cerr <<
-        "Usage: " << argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port'" << std::endl;
+        "Usage:\n" <<
+        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port'" << '\n';
+    std::cerr <<
+        argv0 << " recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'" << std::endl;
     exit(1);
 }
 
@@ -136,7 +148,22 @@ static void forward(const std::vector<std::string>& args) {
 }
 
 static void receive(const std::vector<std::string>& args) {
-    return;
+    // bind address must be specified at present
+    if (args.size() < 5)
+        usage();
+
+    V4Addr recvaddr(args[2]);
+    V4Addr multiaddr(args[3]);
+    V4Addr sendfromaddr(args[4]);
+
+    UDPSocket source, sink;
+
+    source.bind(recvaddr);
+
+    sink.bind(sendfromaddr);
+    sink.connect(multiaddr);
+
+    flow(source, sink);
 }
 
 int main(int argc, char *argv[]) {
@@ -144,7 +171,7 @@ int main(int argc, char *argv[]) {
 
     // usage:
     // 'fwd' 'mcaddr:port' 'src:port' 'unidst:port'
-    // 'receive' 'mcaddr:port' (src:port (bind))'
+    // 'receive' 'recvaddr:port' 'mcaddr:port' '(src:port (bind))'
 
     std::vector<std::string> args = parseArgs(argc, argv);
 
@@ -153,7 +180,7 @@ int main(int argc, char *argv[]) {
 
     if (args[1] == "fwd" || args[1] == "forward")
         forward(args);
-    else if (args[1] == "receive")
+    else if (args[1] == "recv" || args[1] == "receive")
         receive(args);
     else
         usage();
