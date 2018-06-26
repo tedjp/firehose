@@ -16,4 +16,4 @@ mfwd: mf2.cpp
 	g++ -std=gnu++17 -Wall -Og -g -o $@ $<
 
 dist:
-	tar cvvf mfwd.tar.gz mf2.cpp Makefile safefd.h
+	tar cvvzf mfwd.tar.gz mf2.cpp Makefile safefd.h
