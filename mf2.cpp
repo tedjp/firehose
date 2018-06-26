@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <unistd.h>
 
 #include "safefd.h"
 
@@ -43,6 +44,10 @@ struct V4Addr {
     }
 };
 
+static std::string perr(const char *msg) {
+    return std::string(msg) + ": " + strerror(errno);
+}
+
 struct UDPSocket {
     SafeFD fd_;
 
@@ -51,6 +56,16 @@ struct UDPSocket {
 
         if (fd_ == -1)
             throw std::runtime_error(string("socket: ") + strerror(errno));
+    }
+
+    void connect(const V4Addr& dest) {
+        int err = ::connect(
+                fd_.get(),
+                reinterpret_cast<const struct sockaddr*>(&dest.sockaddr_),
+                sizeof(dest.sockaddr_));
+
+        if (err != 0)
+            throw std::runtime_error(perr("Connect failed"));
     }
 };
 
@@ -86,6 +101,21 @@ static void usage() {
     exit(1);
 }
 
+static void flow(UDPSocket& src, UDPSocket& sink) {
+    char buf[1500];
+    for (;;) {
+        ssize_t len = read(src.fd_.get(), buf, sizeof(buf));
+        if (len == -1) {
+            throw std::runtime_error("Read error");
+        }
+
+        ssize_t wlen = write(sink.fd_.get(), buf, static_cast<size_t>(len));
+        if (wlen != len) {
+            throw std::runtime_error("Write error");
+        }
+    }
+}
+
 static void forward(const std::vector<std::string>& args) {
     if (args.size() < 5)
         usage();
@@ -94,9 +124,15 @@ static void forward(const std::vector<std::string>& args) {
     V4Addr srcaddr(args[3]);
     V4Addr dest(args[4]);
 
-    UDPSocket s;
+    UDPSocket source;
 
-    subscribe(s.fd_, mcaddr, srcaddr);
+    subscribe(source.fd_, mcaddr, srcaddr);
+
+    UDPSocket sink;
+
+    sink.connect(dest);
+
+    flow(source, sink);
 }
 
 static void receive(const std::vector<std::string>& args) {
