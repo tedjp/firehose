@@ -13,5 +13,5 @@ all: mfwd
 #		  #
 
 mfwd: mf2.cpp
-	g++ -Wall -Og -g -o $@ $<
+	g++ -std=gnu++17 -Wall -Og -g -o $@ $<
 
