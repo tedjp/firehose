@@ -82,7 +82,7 @@ __attribute__((noreturn))
 static void usage();
 static void usage() {
     std::cerr <<
-        "Usage: " << argv0 << " forward 'mcaddr:port' 'src:port' 'unidst:port'" << std::endl;
+        "Usage: " << argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port'" << std::endl;
     exit(1);
 }
 
@@ -107,7 +107,7 @@ int main(int argc, char *argv[]) {
     argv0 = argv[0];
 
     // usage:
-    // 'forward' 'mcaddr:port' 'src:port' 'unidst:port'
+    // 'fwd' 'mcaddr:port' 'src:port' 'unidst:port'
     // 'receive' 'mcaddr:port' (src:port (bind))'
 
     std::vector<std::string> args = parseArgs(argc, argv);
@@ -115,9 +115,7 @@ int main(int argc, char *argv[]) {
     if (args.size() < 2)
         usage();
 
-    UDPSocket s;
-
-    if (args[1] == "forward")
+    if (args[1] == "fwd" || args[1] == "forward")
         forward(args);
     else if (args[1] == "receive")
         receive(args);
