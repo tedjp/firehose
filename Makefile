@@ -11,3 +11,6 @@ mfwd.tar.gz: mfwd.cpp safefd.h Makefile
 
 clean:
 	rm -f mfwd.tar.gz mfwd
+
+sender: sender.c
+	gcc -Wall -o $@ $^

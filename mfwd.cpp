@@ -78,7 +78,18 @@ struct UDPSocket {
     }
 };
 
-static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr) {
+static void mcast_loop(SafeFD& fd, bool loop) {
+    int enable = loop;
+    int err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_LOOP, &enable, sizeof(enable));
+    if (err == -1)
+        throw std::runtime_error(perr("IP_MULTICAST_LOOP change failed"));
+}
+
+static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr, const V4Addr& local_addr) {
+    int err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
+    if (err == -1)
+        throw std::runtime_error(perr("Failed to set multicast interface on listener"));
+
     struct ip_mreq_source mreq;
 
     memset(&mreq, 0, sizeof(mreq));
@@ -86,7 +97,7 @@ static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source
     mreq.imr_multiaddr = mcast_addr.sockaddr_.sin_addr;
     mreq.imr_sourceaddr = source_addr.sockaddr_.sin_addr;
 
-    int err = setsockopt(fd.get(), IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP, &mreq, sizeof(mreq));
+    err = setsockopt(fd.get(), IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP, &mreq, sizeof(mreq));
     if (err)
         throw std::runtime_error(string("failed to join: ") + strerror(errno));
 }
@@ -107,7 +118,7 @@ static void usage();
 static void usage() {
     std::cerr <<
         "Usage:\n" <<
-        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port'" << '\n';
+        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port' 'localaddr:ignored'" << '\n';
     std::cerr <<
         argv0 << " recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'" << std::endl;
     exit(1);
@@ -116,29 +127,43 @@ static void usage() {
 static void flow(UDPSocket& src, UDPSocket& sink) {
     char buf[1500];
     for (;;) {
+        struct sockaddr_storage srcaddr;
+        socklen_t addrlen = sizeof(srcaddr);
+
+#if 0
         ssize_t len = read(src.fd_.get(), buf, sizeof(buf));
+#else
+        ssize_t len = recvfrom(src.fd_.get(), buf, sizeof(buf), 0, reinterpret_cast<struct sockaddr*>(&srcaddr), &addrlen);
+#endif
         if (len == -1) {
             throw std::runtime_error("Read error");
         }
+
+        std::cerr << "Read  " << len << " octets" << std::endl;
 
         ssize_t wlen = write(sink.fd_.get(), buf, static_cast<size_t>(len));
         if (wlen != len) {
             throw std::runtime_error("Write error");
         }
+
+        std::cerr << "Wrote " << len << " octets" << std::endl;
     }
 }
 
 static void forward(const std::vector<std::string>& args) {
-    if (args.size() < 5)
+    if (args.size() < 6)
         usage();
 
     V4Addr mcaddr(args[2]);
     V4Addr srcaddr(args[3]);
     V4Addr dest(args[4]);
+    V4Addr localaddr(args[5]);
 
     UDPSocket source;
 
-    subscribe(source.fd_, mcaddr, srcaddr);
+    subscribe(source.fd_, mcaddr, srcaddr, localaddr);
+    // for debug
+    mcast_loop(source.fd_, true);
 
     UDPSocket sink;
 
