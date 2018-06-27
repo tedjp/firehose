@@ -1,7 +1,8 @@
-all: mfwd
-.PHONY: mfwd clean all dist
+.PHONY: clean all dist
 
-mfwd: mfwd.cpp
+all: mfwd
+
+mfwd: mfwd.cpp safefd.h
 	g++ -std=gnu++17 -Wall -Og -g -o $@ $<
 
 dist: mfwd.tar.gz
