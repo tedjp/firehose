@@ -21,6 +21,11 @@ static const char *argv0;
 struct V4Addr {
     struct sockaddr_in sockaddr_;
 
+    V4Addr() {
+        memset(&sockaddr_, 0, sizeof(sockaddr_));
+        sockaddr_.sin_family = AF_INET;
+    }
+
     V4Addr(const string& s) {
         memset(&sockaddr_, 0, sizeof(sockaddr_));
 
@@ -44,6 +49,8 @@ struct V4Addr {
     }
 };
 
+// Like perror(), but returns the string suitable for constructing a
+// std::exception rather than printing it.
 static std::string perr(const char *msg) {
     return std::string(msg) + ": " + strerror(errno);
 }
@@ -56,6 +63,10 @@ struct UDPSocket {
 
         if (fd_ == -1)
             throw std::runtime_error(string("socket: ") + strerror(errno));
+
+        const int yes = 1;
+        if (setsockopt(fd_.get(), SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) == -1)
+            throw std::runtime_error(perr("setsockopt(SO_REUSEADDR)"));
     }
 
     void connect(const V4Addr& dest) {
@@ -86,9 +97,12 @@ static void mcast_loop(SafeFD& fd, bool loop) {
 }
 
 static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr, const V4Addr& local_addr) {
-    int err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
+    int err;
+#if 0
+    err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
     if (err == -1)
         throw std::runtime_error(perr("Failed to set multicast interface on listener"));
+#endif
 
     struct ip_mreq_source mreq;
 
@@ -125,6 +139,8 @@ static void usage() {
 }
 
 static void flow(UDPSocket& src, UDPSocket& sink) {
+    std::cerr << "Beginning traffic flow" << std::endl;
+
     char buf[1500];
     for (;;) {
         struct sockaddr_storage srcaddr;
@@ -136,14 +152,14 @@ static void flow(UDPSocket& src, UDPSocket& sink) {
         ssize_t len = recvfrom(src.fd_.get(), buf, sizeof(buf), 0, reinterpret_cast<struct sockaddr*>(&srcaddr), &addrlen);
 #endif
         if (len == -1) {
-            throw std::runtime_error("Read error");
+            throw std::runtime_error(perr("Read error"));
         }
 
         std::cerr << "Read  " << len << " octets" << std::endl;
 
         ssize_t wlen = write(sink.fd_.get(), buf, static_cast<size_t>(len));
         if (wlen != len) {
-            throw std::runtime_error("Write error");
+            throw std::runtime_error(perr("Write error"));
         }
 
         std::cerr << "Wrote " << len << " octets" << std::endl;
@@ -161,6 +177,10 @@ static void forward(const std::vector<std::string>& args) {
 
     UDPSocket source;
 
+    V4Addr bindaddr;
+    bindaddr.sockaddr_.sin_port = mcaddr.sockaddr_.sin_port;
+
+    source.bind(bindaddr);
     subscribe(source.fd_, mcaddr, srcaddr, localaddr);
     // for debug
     mcast_loop(source.fd_, true);
