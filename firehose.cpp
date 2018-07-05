@@ -224,10 +224,6 @@ static void receive(const std::vector<std::string>& args) {
 int main(int argc, char *argv[]) {
     argv0 = argv[0];
 
-    // usage:
-    // 'fwd' 'mcaddr:port' 'src:port' 'unidst:port'
-    // 'receive' 'recvaddr:port' 'mcaddr:port' '(src:port (bind))'
-
     std::vector<std::string> args = parseArgs(argc, argv);
 
     if (args.size() < 2)
