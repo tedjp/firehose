@@ -55,10 +55,10 @@ static std::string perr(const char *msg) {
     return std::string(msg) + ": " + strerror(errno);
 }
 
-struct UDPSocket {
+struct Socket {
     SafeFD fd_;
 
-    UDPSocket() {
+    Socket(int domain, int type, int protocol = 0) {
         fd_ = SafeFD(socket(AF_INET, SOCK_DGRAM, 0));
 
         if (fd_ == -1)
@@ -87,6 +87,18 @@ struct UDPSocket {
         if (err != 0)
             throw std::runtime_error(perr("Bind failed"));
     }
+};
+
+struct UDPSocket: public Socket {
+    UDPSocket():
+        Socket(AF_INET, SOCK_DGRAM, 0)
+    {}
+};
+
+struct TCPSocket: public Socket {
+    TCPSocket():
+        Socket(AF_INET, SOCK_STREAM, 0)
+    {}
 };
 
 static void mcast_loop(SafeFD& fd, bool loop) {
