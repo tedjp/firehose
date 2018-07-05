@@ -98,11 +98,13 @@ static void mcast_loop(SafeFD& fd, bool loop) {
 
 static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr, const V4Addr& local_addr) {
     int err;
-#if 0
-    err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
-    if (err == -1)
-        throw std::runtime_error(perr("Failed to set multicast interface on listener"));
-#endif
+
+    if (local_addr.sockaddr_.sin_addr.s_addr != INADDR_ANY) {
+        err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
+
+        if (err == -1)
+            throw std::runtime_error(perr("Failed to set multicast interface on listener"));
+    }
 
     struct ip_mreq_source mreq;
 
@@ -132,7 +134,7 @@ static void usage();
 static void usage() {
     std::cerr <<
         "Usage:\n" <<
-        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port' 'localaddr:ignored'" << '\n';
+        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port' ['localaddr:ignored']" << '\n';
     std::cerr <<
         argv0 << " recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'" << std::endl;
     exit(1);
