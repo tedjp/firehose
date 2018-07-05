@@ -146,11 +146,7 @@ static void flow(UDPSocket& src, UDPSocket& sink) {
         struct sockaddr_storage srcaddr;
         socklen_t addrlen = sizeof(srcaddr);
 
-#if 0
-        ssize_t len = read(src.fd_.get(), buf, sizeof(buf));
-#else
         ssize_t len = recvfrom(src.fd_.get(), buf, sizeof(buf), 0, reinterpret_cast<struct sockaddr*>(&srcaddr), &addrlen);
-#endif
         if (len == -1) {
             throw std::runtime_error(perr("Read error"));
         }
