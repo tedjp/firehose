@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <unistd.h>
+#include <getopt.h>
 
 #include "safefd.h"
 
@@ -89,18 +90,6 @@ struct Socket {
     }
 };
 
-struct UDPSocket: public Socket {
-    UDPSocket():
-        Socket(AF_INET, SOCK_DGRAM, 0)
-    {}
-};
-
-struct TCPSocket: public Socket {
-    TCPSocket():
-        Socket(AF_INET, SOCK_STREAM, 0)
-    {}
-};
-
 static void mcast_loop(SafeFD& fd, bool loop) {
     int enable = loop;
     int err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_LOOP, &enable, sizeof(enable));
@@ -152,7 +141,7 @@ static void usage() {
     exit(1);
 }
 
-static void flow(UDPSocket& src, UDPSocket& sink) {
+static void flow(Socket& src, Socket& sink) {
     std::cerr << "Beginning traffic flow" << std::endl;
 
     char buf[1500];
@@ -176,16 +165,21 @@ static void flow(UDPSocket& src, UDPSocket& sink) {
     }
 }
 
-static void forward(const std::vector<std::string>& args) {
-    if (args.size() < 6)
+// Socktype is the type of the transport/tunnel.
+// Input is always UDP (multicast).
+static void forward(int socktype, const std::vector<std::string>& args) {
+    if (args.size() < 4)
         usage();
 
-    V4Addr mcaddr(args[2]);
-    V4Addr srcaddr(args[3]);
-    V4Addr dest(args[4]);
-    V4Addr localaddr(args[5]);
+    V4Addr mcaddr(args[1]);
+    V4Addr srcaddr(args[2]);
+    V4Addr dest(args[3]);
+    V4Addr localaddr;
 
-    UDPSocket source;
+    if (args.size() >= 5)
+        localaddr = V4Addr(args[4]);
+
+    Socket source(AF_INET, SOCK_DGRAM);
 
     V4Addr bindaddr;
     bindaddr.sockaddr_.sin_port = mcaddr.sockaddr_.sin_port;
@@ -195,23 +189,26 @@ static void forward(const std::vector<std::string>& args) {
     // for debug
     mcast_loop(source.fd_, true);
 
-    UDPSocket sink;
+    Socket sink(AF_INET, socktype);
 
     sink.connect(dest);
 
     flow(source, sink);
 }
 
-static void receive(const std::vector<std::string>& args) {
+// Socktype is the type of the transport/tunnel
+// output is always UDP.
+static void receive(int socktype, const std::vector<std::string>& args) {
     // bind address must be specified at present
-    if (args.size() < 5)
+    if (args.size() < 4)
         usage();
 
-    V4Addr recvaddr(args[2]);
-    V4Addr multiaddr(args[3]);
-    V4Addr sendfromaddr(args[4]);
+    V4Addr recvaddr(args[1]);
+    V4Addr multiaddr(args[2]);
+    V4Addr sendfromaddr(args[3]);
 
-    UDPSocket source, sink;
+    Socket source(AF_INET, socktype);
+    Socket sink(AF_INET, SOCK_DGRAM);
 
     source.bind(recvaddr);
 
@@ -224,15 +221,39 @@ static void receive(const std::vector<std::string>& args) {
 int main(int argc, char *argv[]) {
     argv0 = argv[0];
 
-    std::vector<std::string> args = parseArgs(argc, argv);
+    const char optstring[] = "ut";
+    const struct option longopts[] = {
+        { "udp", no_argument, nullptr, 'u' },
+        { "tcp", no_argument, nullptr, 't' },
+        { nullptr, 0, nullptr, 0 }
+    };
 
-    if (args.size() < 2)
+    int socktype = SOCK_DGRAM;
+
+    int opt;
+    while ((opt = getopt_long(argc, argv, optstring, longopts, nullptr)) != -1) {
+        switch (opt) {
+        case 'u':
+            socktype = SOCK_DGRAM;
+            break;
+        case 't':
+            socktype = SOCK_STREAM;
+            break;
+        default:
+        case '?':
+            usage();
+        }
+    }
+
+    std::vector<std::string> args = parseArgs(argc - optind, argv + optind);
+
+    if (args.size() < 1)
         usage();
 
-    if (args[1] == "fwd" || args[1] == "forward")
-        forward(args);
-    else if (args[1] == "recv" || args[1] == "receive")
-        receive(args);
+    if (args[0] == "fwd" || args[0] == "forward")
+        forward(socktype, args);
+    else if (args[0] == "recv" || args[0] == "receive")
+        receive(socktype, args);
     else
         usage();
 
