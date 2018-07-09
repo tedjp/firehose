@@ -18,6 +18,7 @@ using commune::SafeFD;
 using std::string;
 
 static const char *argv0;
+static bool verbose = false;
 
 struct V4Addr {
     struct sockaddr_in sockaddr_;
@@ -59,8 +60,12 @@ static std::string perr(const char *msg) {
 struct Socket {
     SafeFD fd_;
 
-    Socket(int domain, int type, int protocol = 0) {
-        fd_ = SafeFD(socket(AF_INET, SOCK_DGRAM, 0));
+    explicit Socket(int fd):
+        fd_(fd)
+    {}
+
+    explicit Socket(int domain, int type, int protocol = 0) {
+        fd_ = SafeFD(socket(AF_INET, type, 0));
 
         if (fd_ == -1)
             throw std::runtime_error(string("socket: ") + strerror(errno));
@@ -87,6 +92,20 @@ struct Socket {
 
         if (err != 0)
             throw std::runtime_error(perr("Bind failed"));
+    }
+
+    Socket accept() {
+        Socket remote(::accept(fd_.get(), nullptr, nullptr));
+
+        if (remote.fd_.get() == -1)
+            throw std::runtime_error(perr("Accept failed"));
+
+        return remote;
+    }
+
+    void listen(int backlog) {
+        if (-1 == ::listen(fd_.get(), backlog))
+            throw std::runtime_error(perr("Listen failed"));
     }
 };
 
@@ -135,9 +154,14 @@ static void usage();
 static void usage() {
     std::cerr <<
         "Usage:\n" <<
-        argv0 << " fwd 'mcaddr:port' 'src:port' 'unidst:port' ['localaddr:ignored']" << '\n';
+        argv0 << "[options] fwd 'mcaddr:port' 'src:port' 'unidst:port' ['localaddr:ignored']\n";
     std::cerr <<
-        argv0 << " recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'" << std::endl;
+        argv0 << "[options] recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'\n";
+    std::cerr << "options:\n";
+    std::cerr << "-t --tcp     Use TCP for transport\n";
+    std::cerr << "-u --udp     Use UDP for transport (default)\n";
+    std::cerr << "-v --verbose Verbose output (log each packet)\n";
+    std::cerr.flush();
     exit(1);
 }
 
@@ -154,14 +178,16 @@ static void flow(Socket& src, Socket& sink) {
             throw std::runtime_error(perr("Read error"));
         }
 
-        std::cerr << "Read  " << len << " octets" << std::endl;
+        if (verbose)
+            std::cerr << "Read  " << len << " octets" << std::endl;
 
         ssize_t wlen = write(sink.fd_.get(), buf, static_cast<size_t>(len));
         if (wlen != len) {
             throw std::runtime_error(perr("Write error"));
         }
 
-        std::cerr << "Wrote " << len << " octets" << std::endl;
+        if (verbose)
+            std::cerr << "Wrote " << len << " octets" << std::endl;
     }
 }
 
@@ -212,6 +238,11 @@ static void receive(int socktype, const std::vector<std::string>& args) {
 
     source.bind(recvaddr);
 
+    if (socktype == SOCK_STREAM) {
+        source.listen(1);
+        source = source.accept();
+    }
+
     sink.bind(sendfromaddr);
     sink.connect(multiaddr);
 
@@ -221,10 +252,11 @@ static void receive(int socktype, const std::vector<std::string>& args) {
 int main(int argc, char *argv[]) {
     argv0 = argv[0];
 
-    const char optstring[] = "ut";
+    const char optstring[] = "tuv";
     const struct option longopts[] = {
-        { "udp", no_argument, nullptr, 'u' },
         { "tcp", no_argument, nullptr, 't' },
+        { "udp", no_argument, nullptr, 'u' },
+        { "verbose", no_argument, nullptr, 'v' },
         { nullptr, 0, nullptr, 0 }
     };
 
@@ -233,12 +265,18 @@ int main(int argc, char *argv[]) {
     int opt;
     while ((opt = getopt_long(argc, argv, optstring, longopts, nullptr)) != -1) {
         switch (opt) {
-        case 'u':
-            socktype = SOCK_DGRAM;
-            break;
         case 't':
             socktype = SOCK_STREAM;
             break;
+
+        case 'u':
+            socktype = SOCK_DGRAM;
+            break;
+
+        case 'v':
+            verbose = true;
+            break;
+
         default:
         case '?':
             usage();
