@@ -178,6 +178,9 @@ static void flow(Socket& src, Socket& sink) {
             throw std::runtime_error(perr("Read error"));
         }
 
+        if (len == 0)
+            return;
+
         if (verbose)
             std::cerr << "Read  " << len << " octets" << std::endl;
 
