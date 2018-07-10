@@ -9,6 +9,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <unistd.h>
 #include <getopt.h>
 
@@ -106,6 +107,21 @@ struct Socket {
     void listen(int backlog) {
         if (-1 == ::listen(fd_.get(), backlog))
             throw std::runtime_error(perr("Listen failed"));
+    }
+
+    void defer_accept(bool whether) {
+#ifdef TCP_DEFER_ACCEPT
+        int wint = whether;
+        if (setsockopt(fd_.get(), SOL_TCP, TCP_DEFER_ACCEPT, &wint, sizeof(wint)) == -1)
+            throw std::runtime_error(perr("Failed to set TCP_DEFER_ACCEPT"));
+#endif
+    }
+
+    void fastopen(int qlen) {
+#ifdef TCP_FASTOPEN
+        if (setsockopt(fd_.get(), SOL_TCP, TCP_FASTOPEN, &qlen, sizeof(qlen)) == -1)
+            throw std::runtime_error(perr("Failed to set TCP_FASTOPEN"));
+#endif
     }
 };
 
@@ -242,6 +258,8 @@ static void receive(int socktype, const std::vector<std::string>& args) {
 
     if (socktype == SOCK_STREAM) {
         source.listen(1);
+        source.defer_accept(true);
+        source.fastopen(1);
         source = source.accept();
     }
 
