@@ -182,9 +182,8 @@ static void flow(Socket& src, Socket& sink) {
             std::cerr << "Read  " << len << " octets" << std::endl;
 
         ssize_t wlen = write(sink.fd_.get(), buf, static_cast<size_t>(len));
-        if (wlen != len) {
-            throw std::runtime_error(perr("Write error"));
-        }
+        if (wlen != len)
+            std::cerr << perr("Write error") << std::endl;
 
         if (verbose)
             std::cerr << "Wrote " << len << " octets" << std::endl;
