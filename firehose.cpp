@@ -20,7 +20,6 @@ using std::string;
 
 static const char *argv0;
 static bool verbose = false;
-unsigned long pktlen = 1316;
 
 struct V4Addr {
     struct sockaddr_in sockaddr_;
@@ -176,16 +175,6 @@ static void usage() {
         argv0 << "[options] recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'\n";
     std::cerr << "\n";
     std::cerr << "options:\n";
-    // The -p option being explicit is a matter of laziness;
-    // an alternative would be to length-prefix every packet when using
-    // TCP, but that requires larger changes to the flow() function.
-    // In reality the desired packet size is predictable and the default
-    // is probably accurate.
-    std::cerr << "-p size\n";
-    std::cerr << "   --packet-size size\n";
-    std::cerr << "             Multicast packet size. Default: 1316.\n";
-    std::cerr << "-t --tcp     Use TCP for transport\n";
-    std::cerr << "-u --udp     Use UDP for transport (default)\n";
     std::cerr << "-v --verbose Verbose output (log each packet)\n";
     std::cerr.flush();
     exit(1);
@@ -194,14 +183,14 @@ static void usage() {
 static void flow(Socket& src, Socket& sink) {
     std::cerr << "Beginning traffic flow" << std::endl;
 
-    // XXX: Maybe want to set this to about 1500 (max Ethernet frame size)
-    // when the transport is UDP, rather than requiring an accurate default or
-    // explicit --packet-size option.
-    char buf[pktlen];
-    size_t offset = 0; // for TCP short reads
+    // 1500: max Ethernet frame size
+    // 20: IPv4 header size (IPv6 is 40)
+    // 8: UDP header size
+    static const size_t BUFSZ = 1500 - 20 - 8;
+    char buf[BUFSZ];
 
     for (;;) {
-        ssize_t len = recv(src.fd_.get(), buf + offset, pktlen - offset, 0);
+        ssize_t len = recv(src.fd_.get(), buf, sizeof(buf), 0);
 
         if (len == -1) {
             throw std::runtime_error(perr("Read error"));
@@ -210,20 +199,11 @@ static void flow(Socket& src, Socket& sink) {
         if (len == 0)
             return;
 
-        // XXX: May be misleading to see multiple reads per write.
         if (verbose)
             std::cerr << "Read  " << len << " octets" << std::endl;
 
-        offset += len;
-
-        if (offset != pktlen)
-            continue; // read again
-
-        // Got a full packet.
-        offset = 0;
-
-        ssize_t wlen = write(sink.fd_.get(), buf, pktlen);
-        if (wlen != static_cast<ssize_t>(pktlen))
+        ssize_t wlen = write(sink.fd_.get(), buf, len);
+        if (wlen != len)
             std::cerr << perr("Write error") << std::endl;
 
         if (verbose)
@@ -278,13 +258,6 @@ static void receive(int socktype, const std::vector<std::string>& args) {
 
     source.bind(recvaddr);
 
-    if (socktype == SOCK_STREAM) {
-        source.listen(1);
-        source.defer_accept(true);
-        source.fastopen(1);
-        source = source.accept();
-    }
-
     sink.bind(sendfromaddr);
     sink.connect(multiaddr);
 
@@ -294,32 +267,17 @@ static void receive(int socktype, const std::vector<std::string>& args) {
 int main(int argc, char *argv[]) {
     argv0 = argv[0];
 
-    const char optstring[] = "p:tuv";
+    const char optstring[] = "v";
     const struct option longopts[] = {
-        { "packet-size", required_argument, nullptr, 'p' },
-        { "tcp", no_argument, nullptr, 't' },
-        { "udp", no_argument, nullptr, 'u' },
         { "verbose", no_argument, nullptr, 'v' },
         { nullptr, 0, nullptr, 0 }
     };
 
-    int socktype = SOCK_DGRAM;
+    const int socktype = SOCK_DGRAM;
 
     int opt;
     while ((opt = getopt_long(argc, argv, optstring, longopts, nullptr)) != -1) {
         switch (opt) {
-        case 'p':
-            pktlen = std::stoul(optarg);
-            break;
-
-        case 't':
-            socktype = SOCK_STREAM;
-            break;
-
-        case 'u':
-            socktype = SOCK_DGRAM;
-            break;
-
         case 'v':
             verbose = true;
             break;
