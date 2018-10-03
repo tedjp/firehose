@@ -1,3 +1,5 @@
 language: cpp
 sudo: false
 script: make -j all sender
+git:
+    depth: 1
