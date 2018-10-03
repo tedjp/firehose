@@ -170,9 +170,9 @@ static void usage();
 static void usage() {
     std::cerr <<
         "Usage:\n" <<
-        argv0 << "[options] fwd 'mcaddr:port' 'src:port' 'unidst:port' ['mc_local_if_addr:ignored']\n";
+        argv0 << " [options] fwd 'mcaddr:port' 'src:port' 'unidst:port' ['mc_local_if_addr:ignored']\n";
     std::cerr <<
-        argv0 << "[options] recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'\n";
+        argv0 << " [options] recv 'recvaddr:port' 'multidest:port' 'srcaddr:port'\n";
     std::cerr << "\n";
     std::cerr << "options:\n";
     std::cerr << "-v --verbose Verbose output (log each packet)\n";
