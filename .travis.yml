@@ -1,0 +1,3 @@
+language: cpp
+sudo: false
+script: make -j all sender
