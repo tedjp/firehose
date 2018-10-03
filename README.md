@@ -7,6 +7,16 @@ Its full operation involves running it on two different subnets, one to capture
 multicast traffic and forward it as unicast to another instance, which
 multicasts it to the destination network.
 
+## Build
+
+    make
+
+There's also a sample multicast sender program called `sender`:
+
+    make sender
+
+## Usage
+
 The first is considered the forwarder (fwd), the second is considered the
 receiver (recv):
 
