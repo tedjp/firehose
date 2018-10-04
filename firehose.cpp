@@ -181,9 +181,7 @@ static void flow(Socket& src, Socket& sink) {
     }
 }
 
-// Socktype is the type of the transport/tunnel.
-// Input is always UDP (multicast).
-static void forward(int socktype, const std::vector<std::string>& args) {
+static void forward(const std::vector<std::string>& args) {
     if (args.size() < 4)
         usage();
 
@@ -205,16 +203,14 @@ static void forward(int socktype, const std::vector<std::string>& args) {
     // for debug
     mcast_loop(source.fd_, true);
 
-    Socket sink(AF_INET, socktype);
+    Socket sink(AF_INET, SOCK_DGRAM);
 
     sink.connect(dest);
 
     flow(source, sink);
 }
 
-// Socktype is the type of the transport/tunnel
-// output is always UDP.
-static void receive(int socktype, const std::vector<std::string>& args) {
+static void receive(const std::vector<std::string>& args) {
     // bind address must be specified at present
     if (args.size() < 4)
         usage();
@@ -223,7 +219,7 @@ static void receive(int socktype, const std::vector<std::string>& args) {
     V4Addr multiaddr(args[2]);
     V4Addr sendfromaddr(args[3]);
 
-    Socket source(AF_INET, socktype);
+    Socket source(AF_INET, SOCK_DGRAM);
     Socket sink(AF_INET, SOCK_DGRAM);
 
     source.bind(recvaddr);
@@ -242,8 +238,6 @@ int main(int argc, char *argv[]) {
         { "verbose", no_argument, nullptr, 'v' },
         { nullptr, 0, nullptr, 0 }
     };
-
-    const int socktype = SOCK_DGRAM;
 
     int opt;
     while ((opt = getopt_long(argc, argv, optstring, longopts, nullptr)) != -1) {
@@ -264,9 +258,9 @@ int main(int argc, char *argv[]) {
         usage();
 
     if (args[0] == "fwd" || args[0] == "forward")
-        forward(socktype, args);
+        forward(args);
     else if (args[0] == "recv" || args[0] == "receive")
-        receive(socktype, args);
+        receive(args);
     else
         usage();
 
