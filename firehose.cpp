@@ -24,7 +24,8 @@ static bool verbose = false;
 // Like perror(), but returns the string suitable for constructing a
 // std::exception rather than printing it.
 static std::string perr(const char *msg) {
-    return std::string(msg) + ": " + strerror(errno);
+    int err = errno;
+    return std::string(msg) + ": " + strerror(err);
 }
 
 struct Socket {
