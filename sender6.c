@@ -13,7 +13,8 @@ int main(int argc, char *argv[]) {
     addr.sin6_family = AF_INET6;
     addr.sin6_port = htons(1234);
 
-    if (inet_pton(AF_INET6, "ff02::1234", &addr.sin6_addr) != 1)
+    // ff0x::114 is "Used for experiments"
+    if (inet_pton(AF_INET6, "ff02::114", &addr.sin6_addr) != 1)
         return 1;
 
     int s = socket(PF_INET6, SOCK_DGRAM, 0);
