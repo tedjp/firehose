@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <getopt.h>
 
+#include "addr.h"
 #include "safefd.h"
 
 using commune::SafeFD;
@@ -19,51 +20,6 @@ using std::string;
 
 static const char *argv0;
 static bool verbose = false;
-
-struct V4Addr {
-    struct sockaddr_in sockaddr_;
-
-    V4Addr() {
-        memset(&sockaddr_, 0, sizeof(sockaddr_));
-        sockaddr_.sin_family = AF_INET;
-    }
-
-    V4Addr(const string& s) {
-        memset(&sockaddr_, 0, sizeof(sockaddr_));
-
-        auto col = s.find(':');
-
-        if (col == s.npos)
-            throw std::runtime_error("port is required");
-
-        string addrpart = s.substr(0, col);
-        string portpart = s.substr(col + 1);
-
-        sockaddr_.sin_family = AF_INET;
-        unsigned long ulport = std::stoul(portpart);
-        if (ulport > std::numeric_limits<uint16_t>::max())
-            throw std::range_error("Port out of range");
-
-        sockaddr_.sin_port = htons(static_cast<uint16_t>(ulport));
-
-        if (inet_pton(AF_INET, addrpart.c_str(), &sockaddr_.sin_addr) != 1)
-            throw std::runtime_error("Cannot parse v4 addr");
-    }
-};
-
-struct V6Addr {
-    struct sockaddr_in6 sockaddr_;
-
-    V6Addr() {
-        memset(&sockaddr_, 0, sizeof(sockaddr));
-        sockaddr_.sin6_family = AF_INET6;
-    }
-
-    V6Addr(const string& s) {
-        memset(&sockaddr_, 0, sizeof(sockaddr));
-        sockaddr_.sin6_family = AF_INET6;
-    }
-};
 
 // Like perror(), but returns the string suitable for constructing a
 // std::exception rather than printing it.
@@ -89,7 +45,7 @@ struct Socket {
             throw std::runtime_error(perr("setsockopt(SO_REUSEADDR)"));
     }
 
-    void connect(const V4Addr& dest) {
+    void connect(const V6Addr& dest) {
         int err = ::connect(
                 fd_.get(),
                 reinterpret_cast<const struct sockaddr*>(&dest.sockaddr_),
@@ -99,7 +55,7 @@ struct Socket {
             throw std::runtime_error(perr("Connect failed"));
     }
 
-    void bind(const V4Addr& addr) {
+    void bind(const V6Addr& addr) {
         int err = ::bind(fd_.get(),
                 reinterpret_cast<const struct sockaddr*>(&addr.sockaddr_),
                 sizeof(addr.sockaddr_));
@@ -110,21 +66,26 @@ struct Socket {
 };
 
 static void mcast_loop(SafeFD& fd, bool loop) {
-    int enable = loop;
+    const int enable = loop;
+
     int err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_LOOP, &enable, sizeof(enable));
     if (err == -1)
         throw std::runtime_error(perr("IP_MULTICAST_LOOP change failed"));
+
+    // Redundant?
+    err = setsockopt(fd.get(), IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &enable, sizeof(enable));
+    if (err == -1)
+        throw std::runtime_error(perr("IPV6_MULTICAST_LOOP change failed"));
 }
 
-static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source_addr, const V4Addr& local_addr) {
+static void subscribe(SafeFD& fd, const V6Addr& mcast_addr, const V6Addr& source_addr, int if_index) {
     int err;
 
-    if (local_addr.sockaddr_.sin_addr.s_addr != INADDR_ANY) {
-        err = setsockopt(fd.get(), IPPROTO_IP, IP_MULTICAST_IF, &local_addr.sockaddr_.sin_addr, sizeof(local_addr.sockaddr_.sin_addr));
-
-        if (err == -1)
-            throw std::runtime_error(perr("Failed to set multicast interface on listener"));
-    }
+#if 0
+    err = setsockopt(fd.get(), IPPROTO_IPV6, IPV6_MULTICAST_IF,
+            &if_index, sizeof(if_index));
+    if (err == -1)
+        throw std::runtime_error(perr("Failed to set multicast interface on listener"));
 
     struct ip_mreq_source mreq;
 
@@ -136,6 +97,16 @@ static void subscribe(SafeFD& fd, const V4Addr& mcast_addr, const V4Addr& source
     err = setsockopt(fd.get(), IPPROTO_IP, IP_ADD_SOURCE_MEMBERSHIP, &mreq, sizeof(mreq));
     if (err)
         throw std::runtime_error(string("failed to join: ") + strerror(errno));
+#else
+    struct group_source_req req;
+    req.gsr_interface = static_cast<uint32_t>(if_index);
+    memcpy(&req.gsr_group, &mcast_addr.sockaddr_, sizeof(mcast_addr.sockaddr_));
+    memcpy(&req.gsr_source, &source_addr.sockaddr_, sizeof(source_addr.sockaddr_));
+
+    err = setsockopt(fd.get(), IPPROTO_IPV6, MCAST_JOIN_GROUP, &req, sizeof(req));
+    if (err == -1)
+        throw std::runtime_error(string("failed to join: ") + strerror(errno));
+#endif
 }
 
 static std::vector<std::string> parseArgs(int argc, char *argv[]) {
@@ -199,25 +170,26 @@ static void forward(const std::vector<std::string>& args) {
     if (args.size() < 4)
         usage();
 
-    V4Addr mcaddr(args[1]);
-    V4Addr srcaddr(args[2]);
-    V4Addr dest(args[3]);
-    V4Addr localaddr;
-
+    V6Addr mcaddr(args[1]);
+    V6Addr srcaddr(args[2]);
+    V6Addr dest(args[3]);
+    int interface_idx = 0;
     if (args.size() >= 5)
-        localaddr = V4Addr(args[4]);
+        interface_idx = static_cast<int>(strtol(args[4].c_str(), nullptr, 10));
 
-    Socket source(AF_INET, SOCK_DGRAM);
+    Socket source(AF_INET6, SOCK_DGRAM);
 
-    V4Addr bindaddr;
+#if 0
+    V6Addr bindaddr;
     bindaddr.sockaddr_.sin_port = mcaddr.sockaddr_.sin_port;
 
     source.bind(bindaddr);
-    subscribe(source.fd_, mcaddr, srcaddr, localaddr);
+#endif
+    subscribe(source.fd_, mcaddr, srcaddr, interface_idx);
     // for debug
     mcast_loop(source.fd_, true);
 
-    Socket sink(AF_INET, SOCK_DGRAM);
+    Socket sink(AF_INET6, SOCK_DGRAM);
 
     sink.connect(dest);
 
@@ -229,9 +201,9 @@ static void receive(const std::vector<std::string>& args) {
     if (args.size() < 4)
         usage();
 
-    V4Addr recvaddr(args[1]);
-    V4Addr multiaddr(args[2]);
-    V4Addr sendfromaddr(args[3]);
+    V6Addr recvaddr(args[1]);
+    V6Addr multiaddr(args[2]);
+    V6Addr sendfromaddr(args[3]);
 
     Socket source(AF_INET, SOCK_DGRAM);
     Socket sink(AF_INET, SOCK_DGRAM);

@@ -35,7 +35,7 @@ The address parameters are generally in traffic order:
 the address to subscribe to
 
 * `src:port`
-the source address to send unicast traffic from
+the multicast source address
 
 * `unidst:port`
 the unicast destination (receiver address)
