@@ -58,6 +58,11 @@ struct V6Addr {
         memset(&sockaddr_, 0, sizeof(sockaddr));
         sockaddr_.sin6_family = AF_INET6;
     }
+
+    V6Addr(const string& s) {
+        memset(&sockaddr_, 0, sizeof(sockaddr));
+        sockaddr_.sin6_family = AF_INET6;
+    }
 };
 
 // Like perror(), but returns the string suitable for constructing a
