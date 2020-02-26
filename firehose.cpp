@@ -36,7 +36,7 @@ struct Socket {
     {}
 
     explicit Socket(int domain, int type, int protocol = 0) {
-        fd_ = SafeFD(socket(AF_INET, type, 0));
+        fd_ = SafeFD(socket(AF_INET6, type, 0));
 
         if (fd_ == -1)
             throw std::runtime_error(string("socket: ") + strerror(errno));
@@ -99,12 +99,19 @@ static void subscribe(SafeFD& fd, const V6Addr& mcast_addr, const V6Addr& source
     if (err)
         throw std::runtime_error(string("failed to join: ") + strerror(errno));
 #else
+# if 0 // MCAST_JOIN_SOURCE_GROUP
     struct group_source_req req;
     req.gsr_interface = static_cast<uint32_t>(if_index);
     memcpy(&req.gsr_group, &mcast_addr.sockaddr_, sizeof(mcast_addr.sockaddr_));
     memcpy(&req.gsr_source, &source_addr.sockaddr_, sizeof(source_addr.sockaddr_));
 
+    err = setsockopt(fd.get(), IPPROTO_IPV6, MCAST_JOIN_SOURCE_GROUP, &req, sizeof(req));
+# else
+    struct group_req req;
+    req.gr_interface = static_cast<uint32_t>(if_index);
+    memcpy(&req.gr_group, &mcast_addr.sockaddr_, sizeof(mcast_addr.sockaddr_));
     err = setsockopt(fd.get(), IPPROTO_IPV6, MCAST_JOIN_GROUP, &req, sizeof(req));
+# endif
     if (err == -1)
         throw std::runtime_error(string("failed to join: ") + strerror(errno));
 #endif
@@ -206,8 +213,8 @@ static void receive(const std::vector<std::string>& args) {
     V6Addr multiaddr(args[2]);
     V6Addr sendfromaddr(args[3]);
 
-    Socket source(AF_INET, SOCK_DGRAM);
-    Socket sink(AF_INET, SOCK_DGRAM);
+    Socket source(AF_INET6, SOCK_DGRAM);
+    Socket sink(AF_INET6, SOCK_DGRAM);
 
     source.bind(recvaddr);
 

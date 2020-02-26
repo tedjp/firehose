@@ -15,7 +15,7 @@ static pair<string, string> splitAddressString(const string& s) {
     size_t pos = s.find(']');
 
     if (pos != s.npos)
-        return {s.substr(1, pos - 2), s.substr(pos + 2)}; // maybe throws
+        return {s.substr(1, pos - 1), s.substr(pos + 2)}; // maybe throws
 
     // Maybe IPv4
     pos = s.find(':');
