@@ -51,6 +51,15 @@ struct V4Addr {
     }
 };
 
+struct V6Addr {
+    struct sockaddr_in6 sockaddr_;
+
+    V6Addr() {
+        memset(&sockaddr_, 0, sizeof(sockaddr));
+        sockaddr_.sin6_family = AF_INET6;
+    }
+};
+
 // Like perror(), but returns the string suitable for constructing a
 // std::exception rather than printing it.
 static std::string perr(const char *msg) {
